@@ -161,7 +161,7 @@ SYSTEM BOOT
 
 ---
 
-###collins muoki– Flow Logic, Calculations & Display System
+###  collins muoki– Flow Logic, Calculations & Display System
 
 * Implemented core system operation logic in `runSystem()`
 * Designed and implemented:
