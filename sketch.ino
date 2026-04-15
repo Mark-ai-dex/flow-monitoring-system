@@ -1,25 +1,3 @@
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-
-// ================= OLED =================
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-
-// ================= PINS =================
-const int startButton = 14;
-const int stopButton  = 25;
-const int pumpRelay   = 33;
-const int led         = 26;
-const int potPin      = 34;
-
-// ================= SYSTEM =================
-bool systemRunning = false;
-
-bool lastStopState = HIGH;
-unsigned long stopPressTime = 0;
-
 // ================= FLOW VARIABLES =================
 float flowRate = 0;   // mL/min
 float volume   = 0;   // mL
@@ -29,89 +7,35 @@ float cost     = 0;   // KSh
 const float MAX_VOLUME = 5000.0;          // 5 Litres = 5000 mL
 const float COST_PER_ML = 12.0 / 80.0;     // 0.15 KSh per mL
 
-// ================= SETUP =================
-void setup() {
-  Serial.begin(115200);
+// ================= SYSTEM RUN LOGIC =================
+void runSystem() {
 
-  pinMode(startButton, INPUT_PULLUP);
-  pinMode(stopButton, INPUT_PULLUP);
+  // TURN ON OUTPUT DEVICES
+  digitalWrite(pumpRelay, HIGH);
+  digitalWrite(led, HIGH);
 
-  pinMode(pumpRelay, OUTPUT);
-  pinMode(led, OUTPUT);
+  // ================= FLOW RATE CALCULATION =================
+  int potValue = analogRead(potPin);
+  flowRate = map(potValue, 0, 4095, 0, 1000); // mL/min
 
-  digitalWrite(pumpRelay, LOW);
-  digitalWrite(led, LOW);
+  // ================= VOLUME CALCULATION =================
+  volume += flowRate * 0.001;
 
-  Wire.begin(21, 22);
+  // ================= COST CALCULATION =================
+  cost = volume * COST_PER_ML;
 
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    Serial.println("OLED FAIL");
-    while (true);
-  }
+  // ================= SAFETY LIMIT =================
+  if (volume >= MAX_VOLUME) {
+    systemRunning = false;
 
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(10, 20);
-  display.println("SYSTEM BOOT");
-  display.display();
-  delay(1000);
-}
-
-// ================= LOOP =================
-void loop() {
-
-  handleButtons();
-  updateOLED();
-
-  if (systemRunning) {
-    runSystem();
-  } else {
     digitalWrite(pumpRelay, LOW);
     digitalWrite(led, LOW);
+
+    Serial.println("MAX 5L REACHED");
   }
 }
 
-// ================= BUTTONS =================
-void handleButtons() {
-
-  if (digitalRead(startButton) == LOW) {
-    systemRunning = true;
-    Serial.println("STARTED");
-    delay(250);
-  }
-
-  bool stopState = digitalRead(stopButton);
-
-  if (lastStopState == HIGH && stopState == LOW) {
-    stopPressTime = millis();
-  }
-
-  // HOLD = RESET
-  if (stopState == LOW) {
-    if (millis() - stopPressTime > 2000) {
-      systemRunning = false;
-
-      volume = 0;
-      cost = 0;
-
-      Serial.println("RESET");
-      delay(300);
-    }
-  }
-
-  // SHORT PRESS = STOP
-  if (lastStopState == LOW && stopState == HIGH) {
-    if (millis() - stopPressTime < 2000) {
-      systemRunning = false;
-      Serial.println("STOP");
-    }
-  }
-
-  lastStopState = stopState;
-}
-
-// ================= OLED =================
+// ================= OLED DISPLAY =================
 void updateOLED() {
 
   display.clearDisplay();
@@ -142,30 +66,4 @@ void updateOLED() {
   display.print("MAX: 5000 mL");
 
   display.display();
-}
-
-// ================= SYSTEM =================
-void runSystem() {
-
-  digitalWrite(pumpRelay, HIGH);
-  digitalWrite(led, HIGH);
-
-  // POTENTIOMETER → flow rate in mL/min
-  int potValue = analogRead(potPin);
-  flowRate = map(potValue, 0, 4095, 0, 1000); // 0–1000 mL/min
-
-  // convert to volume (per loop simulation)
-  volume += flowRate * 0.001;
-
-  // cost calculation
-  cost = volume * COST_PER_ML;
-
-  // AUTO STOP at 5L
-  if (volume >= MAX_VOLUME) {
-    systemRunning = false;
-    digitalWrite(pumpRelay, LOW);
-    digitalWrite(led, LOW);
-
-    Serial.println("MAX 5L REACHED");
-  }
 }
